@@ -1,0 +1,58 @@
+-- MySQL Code for creating procedure, which inserts row into MetricValues with one line query (see USAGE), by passing name values, 
+-- in contrast to passing their uniqueId which is inconvinient.
+
+-- USAGE:   CALL InsertMetricValue('Language_name', 'Tool_name', 'Metric_Name', [definition_id], 'Project_name', 'File/Directory', [source_id], [metric_value]);
+
+-- EXAMPLE: CALL InsertMetricValue('Python', 'Pylint', 'Code smells', 25, 'PyTorch', 'Directory', 34, 1333);
+
+
+DELIMITER //
+CREATE PROCEDURE InsertMetricValue (
+    IN p_languageName VARCHAR(255),
+    IN p_toolName VARCHAR(255),
+    IN p_metricName VARCHAR(255),
+    IN p_definitionID INT,
+    IN p_projectName VARCHAR(255),
+    IN p_levelName VARCHAR(255),
+    IN p_sourceID INT,
+    IN p_metricValue INT
+)
+BEGIN
+    DECLARE v_languageID INT;
+    DECLARE v_toolID INT;
+    DECLARE v_metricID INT;
+    DECLARE v_toolMetricID INT;
+
+    -- Get language ID
+    SELECT `uniqueID` INTO v_languageID FROM `languages` WHERE `languageName` = p_languageName;
+
+    -- Get tool ID
+    SELECT `uniqueID` INTO v_toolID FROM `tools` WHERE `toolName` = p_toolName;
+
+    -- Get metric ID
+    SELECT `uniqueID` INTO v_metricID FROM `metricNames` WHERE `metricName` = p_metricName;
+
+    -- Get or insert into toolsMetricsConnections
+    SELECT `uniqueID` INTO v_toolMetricID
+    FROM `toolsMetricsConnections`
+    WHERE `languageID` = v_languageID
+    AND `toolID` = v_toolID
+    AND `metricID` = v_metricID
+    AND `definitionID` = p_definitionID;
+
+    IF v_toolMetricID IS NULL THEN
+        INSERT INTO `toolsMetricsConnections` (`languageID`, `toolID`, `metricID`, `definitionID`)
+        VALUES (v_languageID, v_toolID, v_metricID, p_definitionID);
+        SET v_toolMetricID = LAST_INSERT_ID();
+    END IF;
+
+    -- Insert into metricValues
+    INSERT INTO `metricValues` (`toolMetricID`, `projectID`, `levelID`, `sourceID`, `metricValue`)
+    VALUES (
+        v_toolMetricID,
+        (SELECT `uniqueID` FROM `projects` WHERE `projectName` = p_projectName),
+        (SELECT `uniqueID` FROM `analysisLevels` WHERE `levelName` = p_levelName),
+        p_sourceID,
+        p_metricValue
+    );
+END //
